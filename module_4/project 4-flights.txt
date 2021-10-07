@@ -1,0 +1,156 @@
+Задания dst_project
+ Изучаем закономерности в данных
+
+4.1 База данных содержит список аэропортов практически всех крупных городов России. В большинстве городов есть только один аэропорт. Исключение составляет:
+select count(ap.city), ap.city
+from dst_project.airports ap
+group by ap.city
+order by count(ap.city) desc
+ Answer-Moscow and Ulyanovsk
+
+4.2 
+1.select count(distinct f.status)
+from dst_project.flights f
+2.select count(f.flight_no)
+from dst_project.flights f
+where f.status=‘Departed'
+3.select a.model, count(s.seat_no), a.aircraft_code
+from dst_project.aircrafts a join dst_project.seats s on a.aircraft_code=s.aircraft_code
+group by a.model,a.aircraft_code
+4.select count(f.flight_id)
+from dst_project.flights f
+where (date_part('year',actual_departure)=2017) and (date_part('month',actual_departure) in (4,5,6,7,8)) and f.status!='Cancelled’  and f.status='Arrived' У меня полуилось 74 221, хотя платформа пишет 74 227
+
+4.3
+1 select count(f.flight_id)
+from dst_project.flights f
+where f.status='Cancelled' 
+2 select count(a.model), a.model
+from dst_project.aircrafts a
+where a.model like  '%Boeing%' or a.model like '%Sukhoi Superjet%' or a.model like '%Airbus%'  
+group by a.model
+3——
+4 select (f.scheduled_arrival-f.actual_arrival), f.flight_id
+from dst_project.flights f
+order by (f.scheduled_arrival-f.actual_arrival)
+
+4.4
+1 select f,scheduled_departure
+from dst_project.flights f
+order by f.scheduled_departure
+2 select f.scheduled_departure-f.scheduled_arrival
+from dst_project.flights f
+order by f.scheduled_departure-f.scheduled_arrival 
+3 select f.scheduled_departure-f.scheduled_arrival, f.departure_airport, f.arrival_airport
+from dst_project.flights f
+order by f.scheduled_departure-f.scheduled_arrival 
+4 select avg(f.scheduled_departure-f.scheduled_arrival)
+from dst_project.flights f
+
+4.5
+1 select s.fare_conditions, a.model, a.aircraft_code,count(s.seat_no)
+from dst_project.seats s join dst_project.aircrafts a on a.aircraft_code=s.aircraft_code
+where a.aircraft_code='SU9'
+group by a.model, s.fare_conditions, a.aircraft_code
+2 select min(b.total_amount)
+from dst_project.bookings b
+3 select bp.seat_no
+from dst_project.tickets t join dst_project.boarding_passes bp on bp.ticket_no=t.ticket_no
+where t.passenger_id='4313 788533'
+
+5.1
+1 select count(f.flight_id)
+from dst_project.flights f
+where (date_part('year',actual_arrival)=2017) and
+      f.status!='Cancelled'  
+      and 
+      f.status='Arrived' 
+      and 
+      f.arrival_airport='AAQ'
+
+2 select count(f.flight_id)
+from dst_project.flights f
+where (((date_part('year',actual_departure)=2017) and date_part('month',actual_departure) in (1,2)) 
+       or
+      ((date_part('year',actual_departure)=2016) and (date_part('month',actual_departure) in (12))))
+      and 
+      f.status!='Cancelled'  
+    and
+      f.departure_airport='AAQ'
+ Или второй вариант
+SELECT *
+FROM dst_project.flights
+WHERE departure_airport = 'AAQ'
+  AND (date_trunc('month', scheduled_departure) in ('2017-01-01','2017-02-01', '2017-12-01'))
+  AND status not in ('Cancelled')
+3 select count(f.flight_id)
+
+from dst_project.flights f
+where 
+      f.status='Cancelled'  
+    and
+      f.departure_airport='AAQ'
+4 select count(distinct f.flight_id)
+from dst_project.flights f 
+where f.arrival_airport not in ('DME', 'SVO', 'VKO') and f.departure_airport='AAQ'
+5 select distinct a.model, a.aircraft_code, f.flight_id, count(s.seat_no)
+from dst_project.seats s join dst_project.aircrafts a on a.aircraft_code=s.aircraft_code
+                         join dst_project.flights f on f.aircraft_code=a.aircraft_code
+where f.departure_airport='AAQ'
+group by a.model,  a.aircraft_code, f.flight_id
+
+
+
+Итоговое задание
+
+with a as 
+       (SELECT count(t_f.ticket_no) ticket_count, sum(t_f.amount) tickets_sum, t_f.flight_id 
+       FROM dst_project.ticket_flights  t_f 
+       GROUP BY t_f.flight_id), --посчитал кол-во билетов на каждом рейсе 
+fuel_consum as
+(SELECT 1864::integer fuel_consumption_kg_per_h,
+       'Sukhoi Superjet-100' model,
+       'SU9' aircraft_code
+    UNION
+SELECT  2400::integer  fuel_consumption_kg_per_h,  --https://alliknowaviation.com/2019/12/14/fuel-consumption-aircraft/
+       'Boeing 737-300' model,
+       '733' aircraft_code),
+distance_time as 
+(SELECT 
+     'EGO' arrival_airport,
+     645::integer distance_km,
+     50::integer time_flight_min
+     UNION
+SELECT 
+    'SVO' arrival_airport,
+    1210::integer distance_km,
+    100::integer time_flight_min
+    UNION
+SELECT 
+     'NOZ' arrival_airport,
+     3657::integer distance_km,
+     306::integer   time_flight_min)
+SELECT f.flight_id, 
+       f.flight_no,
+       f.aircraft_code,
+       f.departure_airport,  
+       f.arrival_airport,
+       ticket_count,
+       tickets_sum,
+       time_flight_min,
+       (time_flight_min/60.0)*fuel_consumption_kg_per_h*(53.23) fuel_consumption, --53.23 это стоимость 1 кг керосина с учетом НДС 13%(на 2017год)////Стоимость топлива для перелета постоянная для удобства
+       /*  Согласно исследованию Wall Street Journal (https://www.wsj.com/articles/SB10001424052702303296604577450581396602106) компании платят большую часть от стоимости билета на топливо
+       в России я полагаю ситуация другая  и я применил  только порционные соотношения из этой статьи для расчета прибыльности рейсов, в статье рассматривалс полет на сомолете
+        из 100 мест- полностью заполненный - где в прибыль по расчетам аналитиков шла стомость 1го билета из 100- порционные соотношения такие 29/100 топливо, 
+        20/100 зарплаты сотрудников,16/100-владение авиапарком,14/100-налоги и сборы, 11/100 тех обслуживание,9/100- другие расходы  и 1/100 прибыль*/
+        --поэтому расчет следующий 
+        ((time_flight_min/60.0)*fuel_consumption_kg_per_h*(53.23)*100)/29.0  all_flight_expenses, -- где fuel_expenses 
+        tickets_sum-(((time_flight_min/60.0)*fuel_consumption_kg_per_h*(53.23))*100)/29 profit
+        
+FROM dst_project.flights f full outer join a on a.flight_id=f.flight_id
+                           join distance_time on f.arrival_airport=distance_time.arrival_airport
+                           join fuel_consum on f.aircraft_code=fuel_consum.aircraft_code
+WHERE f.departure_airport = 'AAQ'
+  AND (date_trunc('month', scheduled_departure) in ('2017-01-01','2017-02-01', '2017-12-01'))
+  AND status not in ('Cancelled')
+
